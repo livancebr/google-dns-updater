@@ -1,7 +1,7 @@
 from flask import Flask
+from flask import request
 import os
 
-import logging
 import time
 
 import google.auth
@@ -28,39 +28,39 @@ changes = zone.changes()
 app = Flask(__name__)
 
 def page_not_found(e):
-    logging.error("The resource could not be found. %s", e)
+    app.logger.error("The resource could not be found. %s", e)
     return "<h1>404</h1><p>The resource could not be found.</p>", 404
 
 
 def page_unauthorized(e):
-    logging.error("You are not authorized to access this resource. %s", e)
+    app.logger.error("You are not authorized to access this resource. %s", e)
     return "<h1>401</h1><p>You are not authorized to access this resource.</p>", 401
 
-@app.route("/")
-def main(request):
+@app.route("/", methods=["POST"])
+def root():
     a_record_found = False
     aaaa_record_found = False
     a_record_changed = False
     aaaa_record_changed = False
     ret_val = ""
     
-    logging.info("Update request started.")
+    app.logger.info("Update request started.")
 
-    request_args = request.get_json(silent=True)
-    
+    request_args = request.form.to_dict()
+
     # Assign our parameters
     if request_args:
-        host = request_args['host']
-        ipv4 = request_args['ipv4']
-        ipv6 = request_args['ipv6']
-        key = request_args['key']
+        host = request_args.get('host')
+        ipv4 = request_args.get('ipv4')
+        ipv6 = request_args.get('ipv6')
+        key = request_args.get('key')
 
     if ipv4 and not (validIPv4Address(ipv4)):
-        logging.info("Given IPv4 {} is not valid".format(ipv4))
+        app.logger.info("Given IPv4 {} is not valid".format(ipv4))
         ipv4 = ""
 
     if ipv6 and not (validIPv6Address(ipv6)):
-        logging.info("Given IPv6 {} is not valid".format(ipv6))
+        app.logger.info("Given IPv6 {} is not valid".format(ipv6))
         ipv6 = ""
 
     # Check we have the required parameters
@@ -73,26 +73,27 @@ def main(request):
 
     # Get a list of the current records
     records = get_records()
-	
+
+    host_with_dot = host + '.'
 
     # Check for matching records
     for record in records:
-        if record.name == host and record.record_type == 'A' and ipv4:
+        if record.name == host_with_dot and record.record_type == 'A' and ipv4:
             a_record_found = True
             for data in record.rrdatas:
                 if test_for_record_change(data, ipv4):
                     add_to_change_set(record, 'delete')
-                    add_to_change_set(create_record_set(host, record.record_type, ipv4), 'create')
+                    add_to_change_set(create_record_set(host_with_dot, record.record_type, ipv4), 'create')
                     a_record_changed = True
                     ret_val += "IPv4 changed successful.\n"
                 else:
                     ret_val += "IPv4 record up to date.\n"
-        if record.name == host and record.record_type == 'AAAA' and ipv6:
+        if record.name == host_with_dot and record.record_type == 'AAAA' and ipv6:
             aaaa_record_found = True
             for data in record.rrdatas:
                 if test_for_record_change(data, ipv6):
                     add_to_change_set(record, 'delete')
-                    add_to_change_set(create_record_set(host, record.record_type, ipv6), 'create')
+                    add_to_change_set(create_record_set(host_with_dot, record.record_type, ipv6), 'create')
                     aaaa_record_changed = True
                     ret_val += "IPv6 changed successful.\n"
                 else:
@@ -109,13 +110,15 @@ def main(request):
 
 def check_key(host,key):
 
-    host_key = next((x for x in cfg.app if x.hostname == host), None)
+    host_key = next((x for x in cfg.app if x['hostname'] == host), None)
 
-    if host_key and host_key.apiKey == key:
-        logging.info("Key received from client is correct.")
+    print(host_key['key'])
+
+    if host_key and host_key['key'] == key:
+        app.logger.info("Key received from client is correct.")
         return True
     else:
-        logging.error("Key received from client is incorrect.")
+        app.logger.error("Key received from client is incorrect.")
         return False
 
 
@@ -138,13 +141,13 @@ def get_records(client=client, zone=zone):
 
 
 def test_for_record_change(old_ip, new_ip):
-    logging.info("Existing IP is {}".format(old_ip))
-    logging.info("New IP is {}".format(new_ip))
+    app.logger.info("Existing IP is {}".format(old_ip))
+    app.logger.info("New IP is {}".format(new_ip))
     if old_ip != new_ip:
-        logging.info("IP addresses do no match. Update required.")
+        app.logger.info("IP addresses do no match. Update required.")
         return True
     else:
-        logging.info("IP addresses match. No update required.")
+        app.logger.info("IP addresses match. No update required.")
         return False
 
 
@@ -162,13 +165,13 @@ def add_to_change_set(record_set, atype):
 
 
 def execute_change_set(changes):
-    logging.info("Change set executed")
+    app.logger.info("Change set executed")
     changes.create()
     while changes.status != 'done':
-        logging.info("Waiting for changes to complete. Change status is {}".format(changes.status))
-        time.sleep(20)
+        app.logger.info("Waiting for changes to complete. Change status is {}".format(changes.status))
+        time.sleep(1)
         changes.reload()
 
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
+    app.run(debug=True, host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
 
