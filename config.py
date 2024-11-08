@@ -1,6 +1,7 @@
 import logging
 import os
 import os.path
+import json
 from dotenv import load_dotenv
 from pathlib import Path
 
@@ -14,7 +15,8 @@ class config():
         logging.info("Starting configuration.")
         self.ttl = os.environ.get('ttl', 3600)
 
-        self.app = os.environ.get('app', '"app" variable has not been set.')
+        unparsed_app = os.environ.get('app', '"app" variable has not been set.')
+        self.app = json.loads(unparsed_app)
 
         self.functionName = os.environ.get('FUNCTION_NAME', '')
         self.gcpRegion = os.environ.get('FUNCTION_REGION', '')

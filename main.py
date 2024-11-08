@@ -1,5 +1,6 @@
-# The main python file that does the work
-import google.cloud.logging
+from flask import Flask
+import os
+
 import logging
 import time
 
@@ -10,9 +11,6 @@ from ipaddress import ip_address, IPv4Address, IPv6Address
 
 import config
 
-# app = flask.Flask(__name__)
-# app.config["DEBUG"] = True
-
 # Grab our configuration
 cfg = config.cfg
 
@@ -22,16 +20,12 @@ if len(cfg.gcpAuthKeyJsonFile) == 0:
 else:
     credentials = service_account.Credentials.from_service_account_file(cfg.gcpAuthKeyJsonFile)
 
-log_client = google.cloud.logging.Client()
-log_client.get_default_handler()
-log_client.setup_logging()
-
 client = dns.Client(project=cfg.gcpProject, credentials=credentials)
 zone = client.zone(cfg.gcpDnsZoneName, cfg.gcpDnsDomain)
 
 records = ""
 changes = zone.changes()
-
+app = Flask(__name__)
 
 def page_not_found(e):
     logging.error("The resource could not be found. %s", e)
@@ -42,7 +36,7 @@ def page_unauthorized(e):
     logging.error("You are not authorized to access this resource. %s", e)
     return "<h1>401</h1><p>You are not authorized to access this resource.</p>", 401
 
-
+@app.route("/")
 def main(request):
     a_record_found = False
     aaaa_record_found = False
@@ -74,7 +68,7 @@ def main(request):
         return page_not_found(404)
 
     # Check the key
-    if not (check_key(key)):
+    if not (check_key(host,key)):
         return page_unauthorized(401)
 
     # Get a list of the current records
@@ -113,8 +107,11 @@ def main(request):
     return ret_val
 
 
-def check_key(key):
-    if cfg.app == key:
+def check_key(host,key):
+
+    host_key = next((x for x in cfg.app if x.hostname == host), None)
+
+    if host_key and host_key.apiKey == key:
         logging.info("Key received from client is correct.")
         return True
     else:
@@ -172,4 +169,6 @@ def execute_change_set(changes):
         time.sleep(20)
         changes.reload()
 
-# app.run()
+if __name__ == "__main__":
+    app.run(debug=True, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
+
