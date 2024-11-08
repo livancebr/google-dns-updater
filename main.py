@@ -1,6 +1,8 @@
 from flask import Flask
 from flask import request
 import os
+import google.cloud.logging
+from google.cloud.logging.handlers import CloudLoggingHandler
 
 import time
 
@@ -26,6 +28,12 @@ zone = client.zone(cfg.gcpDnsZoneName, cfg.gcpDnsDomain)
 records = ""
 changes = zone.changes()
 app = Flask(__name__)
+
+# Initialize the Google Cloud client
+client = google.cloud.logging.Client()
+cloud_handler = CloudLoggingHandler(client)
+app.logger.addHandler(cloud_handler)
+app.logger.setLevel("INFO")
 
 def page_not_found(e):
     app.logger.error("The resource could not be found. %s", e)
